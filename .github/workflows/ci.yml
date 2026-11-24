@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - name: 安装依赖
+        run: npm ci
+      - name: 代码检查
+        run: npm run lint
+      - name: 单元/组件测试
+        run: npm run test
+      - name: 类型检查 + 构建
+        run: npm run build
+
+  # 端到端测试：跨仓库取后端。两个仓库都是 public，默认 GITHUB_TOKEN 就有读权限，不需要额外 Secret
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: demo
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: demo
+      PW_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检出后端
+        uses: actions/checkout@v4
+        with:
+          repository: wwaa883/backend-starter
+          path: backend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: 初始化数据库
+        run: mysql -h 127.0.0.1 -uroot -proot < backend/docker/mysql/initdb/01-init.sql
+      - name: 安装并启动后端
+        run: |
+          cd backend
+          npm ci
+          node src/index.js > backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/hello && break
+            sleep 1
+          done
+      - name: 安装前端依赖与 Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: 端到端测试
+        run: npm run test:e2e
+      - name: 失败时上传报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
