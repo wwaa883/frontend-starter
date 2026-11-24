@@ -1,8 +1,12 @@
 # frontend-starter
 
-[![CI](https://github.com/wwa883/frontend-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/wwa883/frontend-starter/actions/workflows/ci.yml)
+[![CI](https://github.com/wwaa883/frontend-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/wwaa883/frontend-starter/actions/workflows/ci.yml)
 
 React 19 + Vite 8 + TypeScript 的最小前端，示例页面通过 `/api` 代理访问后端。
+
+## 环境要求
+
+Node **≥ 26**（`.nvmrc` 里写了 `26`）。TypeScript 故意停在 **6.0.3**：`typescript-eslint` 8.74 的 peer 上限是 `typescript < 6.1.0`，升到 7.0.2 会直接报 `typescript-eslint does not support TS 7.0` 且 `tsc -b` 解析不了 `@testing-library/react` 的导出，等上游放开再升。
 
 ## 启动
 
@@ -13,6 +17,7 @@ npm run build    # 类型检查 + 打包到 dist/
 npm run preview  # 预览打包结果
 npm run lint     # ESLint 检查
 npm run format   # Prettier 格式化
+npm run format:check # 只检查不改，CI 用的就是它
 npm run test     # Vitest 跑单元/组件测试
 npm run test:e2e # Playwright 端到端测试
 ```
@@ -28,11 +33,12 @@ npm run test:e2e # Playwright 端到端测试
 - **搜索**：输入姓名或邮箱关键字，回车或点「搜索」，带 `?q=` 请求；「清空」回到全量
 - **分页**：每页 10 条，页数按响应头 `X-Total-Count` 计算，上一页 / 下一页，数据变少自动回收到有效页
 - **统计**：顶部显示 `/api/stats` 返回的总记录数
-- **状态**：请求中显示「加载中…」并禁用按钮，防止重复提交；后端异常给出可读提示
+- **状态**：请求中显示「加载中…」并禁用按钮，防止重复提交；提示按状态码分开说——429 提示「请求太频繁了，等一分钟再操作」、409 显示后端文案（邮箱已被使用）、404 提示记录可能已被删、连不上后端则提示先确认 `backend-starter` 已经 `npm run dev`
+- **并发保护**：保存前先 `GET /api/users/:id` 比对 `updated_at`，和别人改过的内容不一致时弹确认，取消就不覆盖
 
 ## 测试
 
-- **单元/组件测试**：`src/test/App.test.tsx`，10 个用例，axios 全 mock，不依赖真实后端；`vitest.config.ts` 固定 `TZ=Asia/Shanghai`，时间断言不受机器时区影响。
+- **单元/组件测试**：`src/test/App.test.tsx`，13 个用例，axios 全 mock，不依赖真实后端；`vitest.config.ts` 固定 `TZ=Asia/Shanghai`，时间断言不受机器时区影响。
 - **端到端测试**：`e2e/users.spec.ts`，4 个用例，需要真实后端（3000）+ 前端（5173）。`playwright.config.ts` 的 `webServer` 会把两个进程都拉起来（已在运行则复用）。
   - 默认用系统已装的 Edge（`channel: 'msedge'`），不额外下载浏览器；CI 或无 Edge 的机器上 `PW_CHANNEL=chromium npx playwright test`。
   - 每个用例结束后按 `q=e2e_` 清理自己造的数据，失败也不会留脏数据。
@@ -46,6 +52,8 @@ npm run test:e2e # Playwright 端到端测试
 
 ## CI
 
-`quality` 任务每次 push / PR 都跑：lint → test → build。
+`quality` 任务每次 push / PR 都跑：lint → 格式检查 → test → build。
 
 `e2e` 任务每次 push / PR 都跑：起 MySQL service、跨仓库检出后端（两个仓库都是 public，默认 `GITHUB_TOKEN` 即可读）、初始化库、起后端、装 Chromium、跑 Playwright。
+
+`.github/dependabot.yml` 每周自动给 npm 依赖和 Actions 提升级 PR；`.editorconfig` / `.gitattributes` 统一缩进与换行符；`LICENSE` 为 MIT。

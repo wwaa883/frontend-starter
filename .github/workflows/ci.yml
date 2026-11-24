@@ -19,6 +19,8 @@ jobs:
         run: npm ci
       - name: 代码检查
         run: npm run lint
+      - name: 格式检查
+        run: npm run format:check
       - name: 单元/组件测试
         run: npm run test
       - name: 类型检查 + 构建

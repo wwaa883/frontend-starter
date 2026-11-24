@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 
-type User = { id: number; name: string; email: string | null; created_at: string; updated_at: string }
+type User = {
+  id: number
+  name: string
+  email: string | null
+  created_at: string
+  updated_at: string
+}
 
 const PAGE_SIZE = 10
 
@@ -17,6 +23,18 @@ function formatTime(value: string | null) {
   )
 }
 
+// 把各种失败翻译成人能看懂的一句话：限流、邮箱重复、记录已删、后端没起
+function describeError(e: unknown, fallback: string) {
+  if (!axios.isAxiosError(e)) return fallback
+  const status = e.response?.status
+  const serverMsg = (e.response?.data as { message?: string } | undefined)?.message
+  if (status === 429) return '请求太频繁了，等一分钟再操作'
+  if (status === 409) return serverMsg || '这个邮箱已经被使用'
+  if (status === 404) return serverMsg || '记录不存在，可能已被别人删除'
+  if (!e.response) return '连不上后端：确认 backend-starter 里已经 npm run dev'
+  return serverMsg || fallback
+}
+
 export default function App() {
   const [users, setUsers] = useState<User[]>([])
   const [total, setTotal] = useState(0)
@@ -28,7 +46,12 @@ export default function App() {
   const [tip, setTip] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [editing, setEditing] = useState<{ id: number; name: string; email: string } | null>(null)
+  const [editing, setEditing] = useState<{
+    id: number
+    name: string
+    email: string
+    updatedAt: string
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -45,8 +68,8 @@ export default function App() {
       const maxPage = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE))
       if (page > maxPage) setPage(maxPage)
       setTip('')
-    } catch {
-      setTip('后端没启动：先在 backend-starter 里跑 npm run dev')
+    } catch (e) {
+      setTip(describeError(e, '列表加载失败'))
     } finally {
       setLoading(false)
     }
@@ -78,8 +101,7 @@ export default function App() {
       if (!hadQuery && page === lastPage) await load()
       else setPage(lastPage)
     } catch (e) {
-      const detail = axios.isAxiosError(e) ? e.response?.data?.message : null
-      setTip(detail || '新增失败，请检查后端')
+      setTip(describeError(e, '新增失败'))
     }
   }
 
@@ -90,6 +112,23 @@ export default function App() {
       setTip('姓名不能为空')
       return
     }
+    // 先读一次最新数据：如果 updated_at 变了，说明别人在这期间改过，问一下再覆盖
+    try {
+      const latest = await axios.get<{ updated_at: string }>(`/api/users/${editing.id}`)
+      if (latest.data.updated_at !== editing.updatedAt) {
+        if (!window.confirm('这条记录刚被别人改过，仍要用你这次的内容覆盖吗？')) {
+          setEditing(null)
+          await load()
+          return
+        }
+      }
+    } catch (e) {
+      setEditing(null)
+      setTip(describeError(e, '保存失败'))
+      await load()
+      return
+    }
+
     try {
       await axios.put(`/api/users/${editing.id}`, {
         name: trimmed,
@@ -98,8 +137,7 @@ export default function App() {
       setEditing(null)
       await load()
     } catch (e) {
-      const detail = axios.isAxiosError(e) ? e.response?.data?.message : null
-      setTip(detail || '保存失败，请检查后端')
+      setTip(describeError(e, '保存失败'))
     }
   }
 
@@ -108,8 +146,8 @@ export default function App() {
     try {
       await axios.delete(`/api/users/${id}`)
       await load()
-    } catch {
-      setTip('删除失败，请检查后端')
+    } catch (e) {
+      setTip(describeError(e, '删除失败'))
     }
   }
 
@@ -225,7 +263,12 @@ export default function App() {
                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <button
                     onClick={() =>
-                      setEditing({ id: u.id, name: u.name, email: u.email ?? '' })
+                      setEditing({
+                        id: u.id,
+                        name: u.name,
+                        email: u.email ?? '',
+                        updatedAt: u.updated_at,
+                      })
                     }
                   >
                     编辑

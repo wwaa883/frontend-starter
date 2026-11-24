@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 
-const uniqueName = () => `e2e_${Date.now().toString().slice(-6)}_${Math.random().toString(36).slice(2, 5)}`
+const uniqueName = () =>
+  `e2e_${Date.now().toString().slice(-6)}_${Math.random().toString(36).slice(2, 5)}`
 
 // 无论用例成功还是失败，都把本轮造的 e2e_ 数据清掉
 test.afterEach(async ({ request }) => {

@@ -1,0 +1,10 @@
+# 统一换行符，避免 Windows/macOS/Linux 之间来回改整文件
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.xlsx binary
+package-lock.json linguist-generated=true

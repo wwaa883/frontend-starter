@@ -30,12 +30,28 @@ function mockList(data = rows, total = data.length) {
     if (url === '/api/stats') {
       return Promise.resolve({ data: { userCount: total }, headers: {} })
     }
+    // 保存前会 GET 单条做冲突检测
+    const single = /^\/api\/users\/(\d+)$/.exec(url)
+    if (single) {
+      const row = data.find((r) => r.id === Number(single[1]))
+      if (!row) {
+        return Promise.reject({
+          isAxiosError: true,
+          response: { status: 404, data: { message: '用户不存在' } },
+        })
+      }
+      return Promise.resolve({ data: row })
+    }
     return Promise.resolve({ data, headers: { 'x-total-count': String(total) } })
   })
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // axios 被整体 mock 后 isAxiosError 会失去真实实现，这里按 isAxiosError 标记还原判断
+  mockedAxios.isAxiosError.mockImplementation((e: unknown) =>
+    Boolean((e as { isAxiosError?: boolean } | null)?.isAxiosError)
+  )
 })
 
 describe('App 用户表格', () => {
@@ -134,6 +150,60 @@ describe('App 用户表格', () => {
     })
   })
 
+  it('记录被别人改过时先确认，取消就不覆盖', async () => {
+    const stale = { ...rows[0], updated_at: '2026-11-24T05:00:00.000Z' }
+    mockedAxios.get.mockImplementation((url: string) => {
+      if (url === '/api/stats') return Promise.resolve({ data: { userCount: 2 }, headers: {} })
+      if (url === '/api/users/1') return Promise.resolve({ data: stale })
+      return Promise.resolve({ data: rows, headers: { 'x-total-count': '2' } })
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('王奥')).toBeInTheDocument())
+
+    await userEvent.click(screen.getAllByText('编辑')[0])
+    await userEvent.click(screen.getByText('保存'))
+
+    await waitFor(() =>
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('被别人改过'))
+    )
+    expect(mockedAxios.put).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('被限流时提示“太频繁”而不是笼统失败', async () => {
+    mockList([])
+    mockedAxios.post.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 429, data: { message: '请求太频繁，请稍后重试' } },
+    })
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('没有匹配的数据')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByPlaceholderText('输入姓名'), '限流测试')
+    await userEvent.click(screen.getByText('新增'))
+
+    await waitFor(() => expect(screen.getByText(/请求太频繁/)).toBeInTheDocument())
+  })
+
+  it('邮箱重复时把后端的 409 提示显示出来', async () => {
+    mockList([])
+    mockedAxios.post.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 409, data: { message: '这个邮箱已经被使用' } },
+    })
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('没有匹配的数据')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByPlaceholderText('输入姓名'), '重复邮箱')
+    await userEvent.click(screen.getByText('新增'))
+
+    await waitFor(() => expect(screen.getByText('这个邮箱已经被使用')).toBeInTheDocument())
+  })
+
   it('分页按钮按 X-Total-Count 计算页数并请求下一页', async () => {
     mockList(rows, 25)
 
@@ -203,12 +273,13 @@ describe('App 用户表格', () => {
   })
 
   it('后端不可用时给出提示', async () => {
-    mockedAxios.get.mockRejectedValue(new Error('Network Error'))
+    // 网络层错误：没有 response
+    mockedAxios.get.mockRejectedValue({ isAxiosError: true })
 
     render(<App />)
 
     await waitFor(() => {
-      expect(screen.getByText(/后端没启动/)).toBeInTheDocument()
+      expect(screen.getByText(/连不上后端/)).toBeInTheDocument()
     })
   })
 })
