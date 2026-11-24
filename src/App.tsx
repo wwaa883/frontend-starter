@@ -178,6 +178,7 @@ export default function App() {
             if (e.key === 'Enter') search()
           }}
           placeholder="搜索姓名或邮箱"
+          aria-label="搜索姓名或邮箱"
           style={{ padding: 6, minWidth: 200 }}
         />
         <button onClick={search} disabled={loading}>
@@ -195,12 +196,14 @@ export default function App() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="输入姓名"
+          aria-label="姓名"
           style={{ padding: 6 }}
         />
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="邮箱（可不填）"
+          aria-label="邮箱"
           style={{ padding: 6, minWidth: 200 }}
         />
         <button onClick={add} disabled={loading}>
@@ -211,8 +214,17 @@ export default function App() {
         </button>
       </div>
 
-      {tip && <p style={{ color: 'crimson' }}>{tip}</p>}
-      {loading && <p style={{ color: '#888' }}>加载中…</p>}
+      {/* 读屏软件会把 role=alert 的内容立刻念出来，屏幕外的用户也能知道出错原因 */}
+      {tip && (
+        <p role="alert" style={{ color: 'crimson' }}>
+          {tip}
+        </p>
+      )}
+      {loading && (
+        <p role="status" style={{ color: '#888' }}>
+          加载中…
+        </p>
+      )}
 
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
